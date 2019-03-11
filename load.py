@@ -3,7 +3,7 @@ from load_topology_dataset import IMAGE_SIZE
 
 def calculate_cell_load(cells, loads):
     if len(cells) == 0:
-        return None
+        return [] 
     elif len(loads):
         
         cells_np = (np.array(cells) / IMAGE_SIZE).reshape((len(cells), 2))
