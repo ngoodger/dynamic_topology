@@ -7,17 +7,20 @@ import load
 IMAGE_SIZE = 32
 MAX_CELL_COUNT = 6
 MIN_CELL_COUNT = 2
+OVERRIDE_TEST = True
 
 class LoadCellDataset(Dataset):
     
     def __init__(self, initial_cell_counts, initial_load_counts,
-                 input_seq_len, target_seq_len, network_mutate_prob=[0.5, 0.75]):
+                 input_seq_len, target_seq_len, network_mutate_prob=[0.5, 0.75], seed=None):
 
         self.initial_cell_counts = initial_cell_counts
         self.initial_load_counts = initial_load_counts
         self.input_seq_len = input_seq_len
         self.target_seq_len = target_seq_len
         self.network_mutate_prob = network_mutate_prob    
+        if seed:
+            random.seed(seed)
         
     def _add_random_cell(self, cells, cells_grid):
         free_cell_locations = np.where(cells_grid==0)
@@ -59,6 +62,7 @@ class LoadCellDataset(Dataset):
         for i in range(initial_load_count):
             loads, loads_grid = self._add_random_load(loads, loads_grid)
         
+        
         ################################################################
         # Generate input sequence
         ################################################################
@@ -97,11 +101,11 @@ class LoadCellDataset(Dataset):
                                           
 
         # Now we know the reference cell.  Build the inputs
-        reference_cell_input = np.zeros((self.input_seq_len))
-        reference_cell_present_input = np.zeros((self.input_seq_len))
+        reference_cell_input = np.zeros((self.input_seq_len, 1))
+        reference_cell_present_input = np.zeros((self.input_seq_len, 1))
         neighbourhood_cell_rel_input = np.zeros((self.input_seq_len, MAX_CELL_COUNT, 2))
-        neighbourhood_cell_load_input = np.zeros((self.input_seq_len, MAX_CELL_COUNT))
-        neighbourhood_cell_present_input = np.zeros((self.input_seq_len, MAX_CELL_COUNT))
+        neighbourhood_cell_load_input = np.zeros((self.input_seq_len, MAX_CELL_COUNT, 1))
+        neighbourhood_cell_present_input = np.zeros((self.input_seq_len, MAX_CELL_COUNT, 1))
         for seq_idx in range(self.input_seq_len):
             reference_cell_active = False
             cell_idx = 0
@@ -124,8 +128,8 @@ class LoadCellDataset(Dataset):
                 reference_cell_present_input[seq_idx] = 1.0
             
                                           
-        reference_cell_target = np.zeros((self.target_seq_len))
-        reference_cell_present_target = np.zeros((self.target_seq_len))
+        reference_cell_target = np.zeros((self.target_seq_len, 1))
+        reference_cell_present_target = np.zeros((self.target_seq_len, 1))
         neighbourhood_cell_rel_target = np.zeros((self.target_seq_len, MAX_CELL_COUNT, 2))
         for seq_idx in range(self.target_seq_len):
             reference_cell_active = False
@@ -146,7 +150,6 @@ class LoadCellDataset(Dataset):
                     reference_cell_active = True
             if reference_cell_active:
                 reference_cell_present_target[seq_idx] = 1.0
-                                          
         return (torch.tensor(reference_cell_input, dtype=torch.float32),
                 torch.tensor(reference_cell_present_input, dtype=torch.float32),
                 torch.tensor(neighbourhood_cell_rel_input, dtype=torch.float32), 
