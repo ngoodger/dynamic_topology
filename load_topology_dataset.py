@@ -30,9 +30,11 @@ class LoadCellDataset(Dataset):
         cells.append((x,y))
         return cells, cells_grid
         
-    def _remove_random_cell(self, cells, cells_grid):
-        x, y = cells.pop(random.randrange(len(cells)))
-        cells_grid[x, y] = 0
+    def _remove_random_cell(self, cells, cells_grid, reference_cell=None, remove_reference_cell=True):
+        cell_idx = random.randrange(len(cells))
+        if remove_reference_cell or not (cells[cell_idx][0] == reference_cell[0] and cells[cell_idx][1] == reference_cell[1]):
+            x, y = cells.pop(random.randrange(len(cells)))
+            cells_grid[x, y] = 0
         return cells, cells_grid
     
     def _add_random_load(self, loads, loads_grid):
@@ -95,9 +97,9 @@ class LoadCellDataset(Dataset):
             load_cells_seq_target.append(load_cells)
             mutate_roll = random.random()
             if mutate_roll > self.network_mutate_prob[0] and mutate_roll < self.network_mutate_prob[1]  and (len(cells) < MAX_CELL_COUNT):
-                cells, cells_grid = self._add_random_cell(cells, cells_grid)
+                cells, cells_grid = self._add_random_cell(cells, cells_grid,)
             elif mutate_roll > self.network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT):
-                cells, cells_grid = self._remove_random_cell(cells, cells_grid)
+                cells, cells_grid = self._remove_random_cell(cells, cells_grid, reference_cell, remove_reference_cell=False)
                                           
 
         # Now we know the reference cell.  Build the inputs

@@ -3,46 +3,44 @@ import torch
 from random import random
 
 class EncoderRNN(nn.Module):
-    def __init__(self, input_size, hidden_size, gru_layers=2):
+    def __init__(self, lstm_hidden_size, lstm_layers=2):
         super(EncoderRNN, self).__init__()
-        self.gru_layers = gru_layers
-        self.hidden_size = hidden_size
-        self.gru = nn.GRU(hidden_size, hidden_size, batch_first=True, num_layers=gru_layers)
-        self.output_layer = nn.Linear(hidden_size, 1)
+        self.lstm_layers = lstm_layers
+        self.lstm_hidden_size = lstm_hidden_size
+        self.lstm = nn.LSTM(3, lstm_hidden_size, batch_first=True, num_layers=lstm_layers)
+        self.output_layer = nn.Linear(lstm_hidden_size, 1)
 
-    def forward(self, reference_cell_input,reference_cell_present_input, neighbourhood_input_influence, hidden):
+    def forward(self, reference_cell_input,reference_cell_present_input, neighbourhood_input_influence, encoder_hidden):
         batch_size = reference_cell_input.size(0)
-        cat_input = (torch.cat((reference_cell_input[:, seq_idx].view(batch_size, -1),
-                                            reference_cell_present_input[:, seq_idx].view(batch_size, -1)), dim=1))
-        encoder_input = torch.cat((cat_input , neighbourhood_input_influence), dim=1).view(batch_size,-1)
-        output, hidden = self.gru(encoder_input, hidden)
-        return output, hidden
+        cat_input = torch.cat((reference_cell_input,reference_cell_present_input), dim=1)
+                                            
+        encoder_input = torch.cat((cat_input , neighbourhood_input_influence), dim=1).view(batch_size, 1, -1)
+        output, encoder_hidden = self.lstm(encoder_input, encoder_hidden)
+        return output, encoder_hidden
 
-    def init_hidden(batch_size):
-        return torch.zeros(self.gru_layers, batch_size, self.hidden_size)
+    def init_hidden(self, batch_size):
+        return (torch.zeros(self.lstm_layers, batch_size, self.lstm_hidden_size), torch.zeros(self.lstm_layers, batch_size, self.lstm_hidden_size))
 
 class DecoderRNN(nn.Module):
-    def __init__(self, hidden_size, gru_layers=2):
+    def __init__(self, lstm_hidden_size, lstm_layers=2):
         super(DecoderRNN, self).__init__()
-        self.gru_layers = gru_layers
-        self.hidden_size = hidden_size
-        self.gru = nn.GRU(hidden_size, hidden_size, batch_first=True, num_layers=gru_layer)
-        self.output_layer = nn.Linear(hidden_size, 1)
+        self.lstm_layers = lstm_layers
+        self.lstm_hidden_size = lstm_hidden_size
+        self.lstm = nn.LSTM(18, lstm_hidden_size, batch_first=True, num_layers=lstm_layers)
+        self.output_layer = nn.Linear(lstm_hidden_size, 1)
 
-    def forward(self, reference_cell_target, reference_cell_present_target, target_neighbourhood_influence, decoder_hidden):
-        combined_input = torch.cat((torch.cat((reference_cell_input, input_present), dim=1), neighbourhood), dim=1)
-        batch_size = input.size(0)
-        output = self.input_layer(combined_input)
-        output, hidden = self.gru(output.view(batch_size, 1, -1), hidden)
-        output = self.output_layer(output)
-        return output, hidden
+    def forward(self, decoder_input, reference_cell_present_target, target_neighbourhood_influence, decoder_hidden):
+        batch_size = decoder_input.size(0)
+        combined_input = torch.cat((torch.cat((decoder_input, reference_cell_present_target), dim=1), target_neighbourhood_influence), dim=1)
+        output, decoder_hidden = self.lstm(combined_input.view(batch_size, 1, -1), decoder_hidden)
+        output = self.output_layer(output.view(batch_size, self.lstm_hidden_size))
+        return output, decoder_hidden
 
 
 class NeighbourhoodInputEmbedding(nn.Module):
     def __init__(self,  neighbourhood_hidden_size):
         super(NeighbourhoodInputEmbedding, self).__init__()
         self.neighbourhood_hidden_size= neighbourhood_hidden_size
-        self.neighbourhood_output_size= neighbourhood_output_size
         self.neighbourhood_rel_input_layer = nn.Sequential(nn.Linear(2, neighbourhood_hidden_size), nn.LeakyReLU())
         self.neighbourhood_load_input_layer = nn.Sequential(nn.Linear(1, neighbourhood_hidden_size), nn.LeakyReLU())
         self.neighbourhood_rel_hidden_layer = nn.Sequential(nn.Linear(neighbourhood_hidden_size, 1), nn.Sigmoid())
@@ -71,32 +69,38 @@ class NeighbourhoodTargetEmbedding(nn.Module):
         output = self.neighbourhood_rel_hidden_layer(neighbourhood_rel_hidden_val)
         return output
 
-class DynamicTopologyModel():
-    def __init__(self, input_size, neighbourhood_hidden_size=32, neighbourhood_cell_count=6, neighbourhood_output_size=16, gru_layers=2, teacher_forcing_probability=1.0):
-        self.gru_layers = gru_layers
+class DynamicTopologyModel(nn.Module):
+    def __init__(self, neighbourhood_hidden_size=32, neighbourhood_cell_count=6, neighbourhood_output_size=16, lstm_hidden_size=32, lstm_layers=2, teacher_forcing_probability=1.0):
+        super(DynamicTopologyModel, self).__init__()
+        self.lstm_layers = lstm_layers
         self.neighbourhood_cell_count = neighbourhood_cell_count
-        self.neighbourhood_input_embedding = NeighbourhoodEncoderEmbedding(neighbourhood_hidden_size, neighbourhood_output_size)
-        self.encoder = EncoderRNN(gru_layers=gru_layers)
-        self.neighbourhood_target_embedding = NeighbourhoodDecoderEmbedding(neighbourhood_hidden_size, neighbourhood_output_size)
-        self.decoder = DecoderRNN(gru_layers=gru_layers)
+        self.neighbourhood_output_size = neighbourhood_output_size
+        self.neighbourhood_input_embedding = NeighbourhoodInputEmbedding(neighbourhood_hidden_size)
+        self.encoder = EncoderRNN(lstm_hidden_size=lstm_hidden_size, lstm_layers=lstm_layers)
+        self.neighbourhood_target_embedding = NeighbourhoodTargetEmbedding(neighbourhood_hidden_size, neighbourhood_output_size)
+        self.decoder = DecoderRNN(lstm_hidden_size=lstm_hidden_size, lstm_layers=lstm_layers)
         self.teacher_forcing_probability = teacher_forcing_probability 
+        self.parameters = (list(self.neighbourhood_input_embedding.parameters()) + list(self.encoder.parameters())
+                           + list(self.neighbourhood_target_embedding.parameters()) + list(self.decoder.parameters()))
+        #self.state_dict = {**self.neighbourhood_input_embedding.state_dict, **self.encoder.state_dict, **self.neighbourhood_target_embedding.state_dict, **self.decoder.state_dict} 
 
     def forward(self, input_seq_len, target_seq_len, reference_cell_input, reference_cell_present_input,
-                neighbourhood_cell_rel_input, neighbourhood_cell_load_input, neighbourhood_cell_rel_target):
+                neighbourhood_cell_rel_input, neighbourhood_cell_load_input, reference_cell_target, reference_cell_present_target, neighbourhood_cell_rel_target):
 
-        decoder_output_seq = torch.zeros((batch_size, target_seq_len))
         batch_size = reference_cell_input.size(0)
+        decoder_output_seq = torch.zeros((batch_size, target_seq_len))
 
         # Iterate through input sequence.
         for input_seq_idx in range(input_seq_len):
-            input_neighbourhood_influence = torch.zeros(batch_size, neigbourhood_output_size)
-            encoder_hidden = encoder.init_hidden(batch_size)
+            input_neighbourhood_influence = torch.zeros(batch_size, 1)
+            encoder_hidden = self.encoder.init_hidden(batch_size)
 
             for neighbourhood_cell_idx in range(self.neighbourhood_cell_count):
-                output = neighbourhood_input_embedding(neighbourhood_cell_rel_input[:,input_seq_idx, neighbourhood_cell_idx, :].view(-1, 2),
+                output = self.neighbourhood_input_embedding(neighbourhood_cell_rel_input[:,input_seq_idx, neighbourhood_cell_idx, :].view(-1, 2),
                                               neighbourhood_cell_load_input[:,input_seq_idx, neighbourhood_cell_idx].view(-1, 1))
                 input_neighbourhood_influence = torch.add(input_neighbourhood_influence, output)
-            encoder_output, encoder_hidden = self.encoder(reference_cell_input, reference_cell_present_input, input_neighbourhood_influence, encoder_hidden)
+            encoder_output, encoder_hidden = self.encoder(reference_cell_input[:, input_seq_idx], reference_cell_present_input[:, input_seq_idx],
+                                                          input_neighbourhood_influence, encoder_hidden)
 
         # First decoder hidden value should equal encoders hidden value.
         decoder_hidden = encoder_hidden
@@ -105,14 +109,13 @@ class DynamicTopologyModel():
 
         # Iterate through target sequence.
         for target_seq_idx in range(target_seq_len):
-            target_neighbourhood_influence = torch.zeros(batch_size, neighbourhood_output_size)
+            target_neighbourhood_influence = torch.zeros(batch_size, self.neighbourhood_output_size)
             for neighbourhood_cell_idx in range(self.neighbourhood_cell_count):
-                output = neighbourhood_target_embedding(neighbourhood_cell_rel_target[:,target_seq_idx, neighbourhood_cell_idx, :].view(-1, 2),
-                                              neighbourhood_cell_load_target[:,target_seq_idx, neighbourhood_cell_idx].view(-1, 1))
+                output = self.neighbourhood_target_embedding(neighbourhood_cell_rel_target[:,target_seq_idx, neighbourhood_cell_idx, :].view(-1, 2))
                 target_neighbourhood_influence = torch.add(target_neighbourhood_influence, output)
-            decoder_output, decoder_hidden = self.decoder(self, ,input_present.view(-1, 1), target_neighbourhood_influence, decoder_hidden)
-            decoder_input = decoder_output if self.teacher_forcing_probability > random() else input_cell_rel_target[target_seq_idx + 1]
-        decoder_output_seq[:, target_seq_idx] = deocder_output
+            decoder_output, decoder_hidden = self.decoder(decoder_input, reference_cell_present_target[:, target_seq_idx], target_neighbourhood_influence, decoder_hidden)
+            decoder_input = decoder_output if self.teacher_forcing_probability > random() else reference_cell_target[target_seq_idx]
+            decoder_output_seq[:, target_seq_idx] = decoder_output[:, 0]
         return decoder_output_seq
             
 
