@@ -75,7 +75,7 @@ class LoadCellDataset(Dataset):
             load_cells_seq_input.append(load_cells)
             mutate_roll = random.random()
             # Only add cells if cell count is less than MAX_CELL_COUNT otherwise do nothing.
-            if mutate_roll > self.network_mutate_prob[0] and mutate_roll < self.network_mutate_prob[1] and (len(cells) < MAX_CELL_COUNT):
+            if mutate_roll > self.network_mutate_prob[0] and mutate_roll < self.network_mutate_prob[1] and (len(cells) < MAX_CELL_COUNT + 1):
                 cells, cells_grid = self._add_random_cell(cells, cells_grid)
             if mutate_roll > self.network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT):
                 cells, cells_grid = self._remove_random_cell(cells, cells_grid)
@@ -96,12 +96,11 @@ class LoadCellDataset(Dataset):
             load_cells = load.calculate_cell_load(cells, loads)
             load_cells_seq_target.append(load_cells)
             mutate_roll = random.random()
-            if mutate_roll > self.network_mutate_prob[0] and mutate_roll < self.network_mutate_prob[1]  and (len(cells) < MAX_CELL_COUNT):
+            if mutate_roll > self.network_mutate_prob[0] and mutate_roll < self.network_mutate_prob[1]  and (len(cells) < MAX_CELL_COUNT + 1):
                 cells, cells_grid = self._add_random_cell(cells, cells_grid,)
             elif mutate_roll > self.network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT):
                 cells, cells_grid = self._remove_random_cell(cells, cells_grid, reference_cell, remove_reference_cell=False)
                                           
-
         # Now we know the reference cell.  Build the inputs
         reference_cell_input = np.zeros((self.input_seq_len, 1))
         reference_cell_present_input = np.zeros((self.input_seq_len, 1))
@@ -119,13 +118,15 @@ class LoadCellDataset(Dataset):
                 if not (current_x == ref_x and current_y == ref_y):
                     # neighbourhood normalized by dividing by IMAGE_SIZE.
                     # Subtract from 1 since cells that are closes have greated influence.
-                    neighbourhood_cell_rel_input[seq_idx, cell_idx, 0] = 1. - (ref_x - current_x) / IMAGE_SIZE
-                    neighbourhood_cell_rel_input[seq_idx, cell_idx, 1] = 1. - (ref_y - current_y) / IMAGE_SIZE
+                    neighbourhood_cell_rel_input[seq_idx, cell_idx, 0] = 1. - abs(ref_x - current_x) / IMAGE_SIZE
+                    neighbourhood_cell_rel_input[seq_idx, cell_idx, 1] = 1. - abs(ref_y - current_y) / IMAGE_SIZE
                     neighbourhood_cell_load_input[seq_idx, cell_idx] = current_load
+                    neighbourhood_cell_present_input[seq_idx, cell_idx] = 1.
                     cell_idx += 1
                 else:
                     reference_cell_input[seq_idx] = current_load
                     reference_cell_active = True
+            
             if reference_cell_active:
                 reference_cell_present_input[seq_idx] = 1.0
             
@@ -133,6 +134,7 @@ class LoadCellDataset(Dataset):
         reference_cell_target = np.zeros((self.target_seq_len, 1))
         reference_cell_present_target = np.zeros((self.target_seq_len, 1))
         neighbourhood_cell_rel_target = np.zeros((self.target_seq_len, MAX_CELL_COUNT, 2))
+        neighbourhood_cell_present_target = np.zeros((self.input_seq_len, MAX_CELL_COUNT, 1))
         for seq_idx in range(self.target_seq_len):
             reference_cell_active = False
             cell_idx = 0
@@ -146,16 +148,20 @@ class LoadCellDataset(Dataset):
                     # Subtract from 1 since cells that are closes have greated influence.
                     neighbourhood_cell_rel_target[seq_idx, cell_idx, 0] = 1. - abs(ref_x - current_x) / IMAGE_SIZE
                     neighbourhood_cell_rel_target[seq_idx, cell_idx, 1] = 1. - abs(ref_y - current_y) / IMAGE_SIZE
+                    neighbourhood_cell_present_target[seq_idx, cell_idx] = 1.
                     cell_idx += 1
                 else:
                     reference_cell_target[seq_idx] = current_load
                     reference_cell_active = True
             if reference_cell_active:
                 reference_cell_present_target[seq_idx] = 1.0
+
         return (torch.tensor(reference_cell_input, dtype=torch.float32),
                 torch.tensor(reference_cell_present_input, dtype=torch.float32),
                 torch.tensor(neighbourhood_cell_rel_input, dtype=torch.float32), 
                 torch.tensor(neighbourhood_cell_load_input, dtype=torch.float32),
+                torch.tensor(neighbourhood_cell_present_input, dtype=torch.float32),
                 torch.tensor(reference_cell_target, dtype=torch.float32),
                 torch.tensor(reference_cell_present_target, dtype=torch.float32),
-                torch.tensor(neighbourhood_cell_rel_target, dtype=torch.float32))
+                torch.tensor(neighbourhood_cell_rel_target, dtype=torch.float32),
+                torch.tensor(neighbourhood_cell_present_target, dtype=torch.float32),)

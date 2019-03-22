@@ -22,6 +22,9 @@ class EncoderRNN(nn.Module):
         neighbourhood_input_influence,
         encoder_hidden,
     ):
+        assert(len(reference_cell_input.shape) == 2)
+        assert(len(reference_cell_present_input.shape) == 2)
+        assert(len(neighbourhood_input_influence.shape) == 2)
         batch_size = reference_cell_input.size(0)
         cat_input = torch.cat(
             (reference_cell_input, reference_cell_present_input), dim=1
@@ -29,7 +32,7 @@ class EncoderRNN(nn.Module):
 
         encoder_input = torch.cat(
             (cat_input, neighbourhood_input_influence), dim=1
-        ).view(batch_size, 1, -1)
+        ).unsqueeze(1)
         output, encoder_hidden = self.lstm(encoder_input, encoder_hidden)
         return output, encoder_hidden
 
@@ -63,6 +66,9 @@ class DecoderRNN(nn.Module):
         target_neighbourhood_influence,
         decoder_hidden,
     ):
+        assert(len(decoder_input.shape) == 2)
+        assert(len(reference_cell_present_target.shape) == 2)
+        assert(len(target_neighbourhood_influence.shape) == 2)
         batch_size = decoder_input.size(0)
         combined_input = torch.cat(
             (
@@ -72,10 +78,10 @@ class DecoderRNN(nn.Module):
             dim=1,
         )
         output, decoder_hidden = self.lstm(
-            combined_input.view(batch_size, 1, -1), decoder_hidden
+            combined_input.unsqueeze(1), decoder_hidden
         )
-        output = self.output_layer(output.view(batch_size, self.lstm_hidden_size))
-        return output, decoder_hidden
+        output = self.output_layer(output.squeeze(1))
+        return output.unsqueeze(1), decoder_hidden
 
 
 class NeighbourhoodInputEmbedding(nn.Module):
@@ -94,6 +100,8 @@ class NeighbourhoodInputEmbedding(nn.Module):
         self.neighbourhood_load_hidden_layer = nn.Linear(neighbourhood_hidden_size, 1)
 
     def forward(self, neighbourhood_rel_input, neighbourhood_load_input):
+        assert(len(neighbourhood_rel_input.shape) == 2)
+        assert(len(neighbourhood_load_input.shape) == 2)
         neighbourhood_rel_hidden_val = self.neighbourhood_rel_input_layer(
             neighbourhood_rel_input
         )
@@ -125,6 +133,7 @@ class NeighbourhoodTargetEmbedding(nn.Module):
         )
 
     def forward(self, neighbourhood_rel_input):
+        assert(len(neighbourhood_rel_input.shape) == 2)
         neighbourhood_rel_hidden_val = self.neighbourhood_rel_input_layer(
             neighbourhood_rel_input
         )
@@ -184,7 +193,7 @@ class DynamicTopologyModel(nn.Module):
 
         batch_size = reference_cell_input.size(0)
         decoder_output_seq = torch.zeros(
-            (batch_size, target_seq_len), device=self.device
+            (batch_size, target_seq_len, 1), device=self.device
         )
 
         # Iterate through input sequence.
@@ -198,10 +207,10 @@ class DynamicTopologyModel(nn.Module):
                 output = self.neighbourhood_input_embedding(
                     neighbourhood_cell_rel_input[
                         :, input_seq_idx, neighbourhood_cell_idx, :
-                    ].view(-1, 2),
+                    ],
                     neighbourhood_cell_load_input[
                         :, input_seq_idx, neighbourhood_cell_idx
-                    ].view(-1, 1),
+                    ],
                 )
                 input_neighbourhood_influence = torch.add(
                     input_neighbourhood_influence, output
@@ -216,7 +225,7 @@ class DynamicTopologyModel(nn.Module):
         # First decoder hidden value should equal encoders hidden value.
         decoder_hidden = encoder_hidden
         # Last input is first input to decoder.
-        decoder_input = reference_cell_input[:, -1].view(-1, 1)
+        decoder_input = reference_cell_input[:, -1]
 
         # Iterate through target sequence.
         for target_seq_idx in range(target_seq_len):
@@ -227,7 +236,7 @@ class DynamicTopologyModel(nn.Module):
                 output = self.neighbourhood_target_embedding(
                     neighbourhood_cell_rel_target[
                         :, target_seq_idx, neighbourhood_cell_idx, :
-                    ].view(-1, 2)
+                    ]
                 )
                 target_neighbourhood_influence = torch.add(
                     target_neighbourhood_influence, output
@@ -239,11 +248,11 @@ class DynamicTopologyModel(nn.Module):
                 decoder_hidden,
             )
             decoder_input = (
-                decoder_output
+                decoder_output[:, 0 , :] 
                 if self.teacher_forcing_probability > random()
-                else reference_cell_target[target_seq_idx]
+                else reference_cell_target[:, target_seq_idx]
             )
-            decoder_output_seq[:, target_seq_idx] = decoder_output[:, 0]
+            decoder_output_seq[:, target_seq_idx, :] = decoder_output[:, 0, :]
         return decoder_output_seq
 
 
