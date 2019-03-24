@@ -193,7 +193,7 @@ class DynamicTopologyModel(nn.Module):
 
         batch_size = reference_cell_input.size(0)
         decoder_output_seq = torch.zeros(
-            (batch_size, target_seq_len, 1), device=self.device
+            (batch_size, target_seq_len.data.numpy()[0], 1), device=self.device
         )
 
         # Iterate through input sequence.
