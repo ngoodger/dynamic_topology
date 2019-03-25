@@ -5,7 +5,7 @@ import random
 import load
 
 IMAGE_SIZE = 32
-MAX_CELL_COUNT = 6
+MAX_CELL_COUNT = 24
 MIN_CELL_COUNT = 2
 OVERRIDE_TEST = True
 
@@ -86,7 +86,7 @@ class LoadCellDataset(Dataset):
         reference_cell_target = np.zeros((target_seq_len, 1))
         reference_cell_present_target = np.zeros((target_seq_len, 1))
         neighbourhood_cell_rel_target = np.zeros((target_seq_len, MAX_CELL_COUNT, 2))
-        neighbourhood_cell_present_target = np.zeros((input_seq_len, MAX_CELL_COUNT, 1))
+        neighbourhood_cell_present_target = np.zeros((target_seq_len, MAX_CELL_COUNT, 1))
         for seq_idx in range(target_seq_len):
             reference_cell_active = False
             cell_idx = 0
