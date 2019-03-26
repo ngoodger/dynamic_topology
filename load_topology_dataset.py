@@ -5,7 +5,7 @@ import random
 import load
 
 IMAGE_SIZE = 32
-MAX_CELL_COUNT = 24
+MAX_CELL_COUNT = 8
 MIN_CELL_COUNT = 2
 OVERRIDE_TEST = True
 
@@ -137,12 +137,13 @@ class LoadCellDataset(Dataset):
         for i in range(self.input_seq_len):
             load_cells = load.calculate_cell_load(cells, loads)
             load_cells_seq_input.append(load_cells)
-            mutate_roll = random.random()
-            # Only add cells if cell count is less than MAX_CELL_COUNT otherwise do nothing.
-            if mutate_roll > self.network_mutate_prob[0] and mutate_roll < self.network_mutate_prob[1] and (len(cells) < MAX_CELL_COUNT + 1):
-                cells, cells_grid = self._add_random_cell(cells, cells_grid)
-            if mutate_roll > self.network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT):
-                cells, cells_grid = self._remove_random_cell(cells, cells_grid)
+            for cell_idx in range(MAX_CELL_COUNT):
+                mutate_roll = random.random()
+                # Only add cells if cell count is less than MAX_CELL_COUNT otherwise do nothing.
+                if mutate_roll < self.network_mutate_prob[0] and mutate_roll < self.network_mutate_prob[1] and (len(cells) < MAX_CELL_COUNT):
+                    cells, cells_grid = self._add_random_cell(cells, cells_grid)
+                if mutate_roll < self.network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT):
+                    cells, cells_grid = self._remove_random_cell(cells, cells_grid)
                 
         ################################################################
         # Get a random reference cell present in the last element of the input sequence.
@@ -159,11 +160,12 @@ class LoadCellDataset(Dataset):
         for i in range(self.target_seq_len):
             load_cells = load.calculate_cell_load(cells, loads)
             load_cells_seq_target.append(load_cells)
-            mutate_roll = random.random()
-            if mutate_roll > self.network_mutate_prob[0] and mutate_roll < self.network_mutate_prob[1]  and (len(cells) < MAX_CELL_COUNT + 1):
-                cells, cells_grid = self._add_random_cell(cells, cells_grid,)
-            elif mutate_roll > self.network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT):
-                cells, cells_grid = self._remove_random_cell(cells, cells_grid, reference_cell, remove_reference_cell=False)
+            for cell_idx in range(MAX_CELL_COUNT):
+                mutate_roll = random.random()
+                if mutate_roll < self.network_mutate_prob[0] and mutate_roll < self.network_mutate_prob[1]  and (len(cells) < MAX_CELL_COUNT):
+                    cells, cells_grid = self._add_random_cell(cells, cells_grid,)
+                elif mutate_roll < self.network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT):
+                    cells, cells_grid = self._remove_random_cell(cells, cells_grid, reference_cell, remove_reference_cell=False)
                                           
         # Now we know the reference cell.  Build the inputs
         (reference_cell_input,
