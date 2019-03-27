@@ -5,15 +5,17 @@ import random
 import load
 
 IMAGE_SIZE = 32
-MAX_CELL_COUNT = 8
+MAX_CELL_COUNT = 16
 MIN_CELL_COUNT = 2
 OVERRIDE_TEST = True
 
 class LoadCellDataset(Dataset):
     
     def __init__(self, initial_cell_counts, initial_load_counts,
-                 input_seq_len, target_seq_len, network_mutate_prob=[0.5, 0.75], seed=None):
+                 input_seq_len, target_seq_len, network_mutate_prob=[0.2, 0.2], seed=None):
 
+        assert(initial_cell_counts[0]) >= MIN_CELL_COUNT
+        assert(initial_cell_counts[1]) <= MAX_CELL_COUNT
         self.initial_cell_counts = initial_cell_counts
         self.initial_load_counts = initial_load_counts
         self.input_seq_len = input_seq_len
@@ -22,7 +24,8 @@ class LoadCellDataset(Dataset):
         if seed:
             random.seed(seed)
         
-    def _add_random_cell(self, cells, cells_grid):
+    @staticmethod
+    def _add_random_cell(cells, cells_grid):
         free_cell_locations = np.where(cells_grid==0)
         x = np.random.choice(free_cell_locations[0])
         y = np.random.choice(free_cell_locations[1])
@@ -30,14 +33,16 @@ class LoadCellDataset(Dataset):
         cells.append((x,y))
         return cells, cells_grid
         
-    def _remove_random_cell(self, cells, cells_grid, reference_cell=None, remove_reference_cell=True):
+    @staticmethod
+    def _remove_random_cell(cells, cells_grid, reference_cell=None, remove_reference_cell=True):
         cell_idx = random.randrange(len(cells))
         if remove_reference_cell or not (cells[cell_idx][0] == reference_cell[0] and cells[cell_idx][1] == reference_cell[1]):
             x, y = cells.pop(random.randrange(len(cells)))
             cells_grid[x, y] = 0
         return cells, cells_grid
     
-    def _add_random_load(self, loads, loads_grid):
+    @staticmethod
+    def _add_random_load(loads, loads_grid):
         free_load_locations = np.where(loads_grid==0)
         x = np.random.choice(free_load_locations[0])
         y = np.random.choice(free_load_locations[1])
@@ -45,13 +50,62 @@ class LoadCellDataset(Dataset):
         loads.append((x, y))
         return loads, loads_grid
         
-    def _remove_random_load(self, cells, loads_grid):
+    @staticmethod
+    def _remove_random_load(cells, loads_grid):
         x, y = cells.pop(random.randrange(len(loads)))
         loads_grid[x, y] = 0
         return loads, loads_grid
     
     def __len__(self):
         return 1000000000
+
+    @staticmethod
+    def generate_inputs_and_targets(input_seq_len, target_seq_len, initial_load_counts, initial_cell_counts, network_mutate_prob):
+        cells, loads = [], []
+        cells_grid = np.zeros((IMAGE_SIZE, IMAGE_SIZE), dtype=np.int64)
+        loads_grid = np.zeros((IMAGE_SIZE, IMAGE_SIZE), dtype=np.int64)
+        initial_cell_count = random.randint(initial_cell_counts[0], initial_cell_counts[1])
+        initial_load_count = random.randint(initial_load_counts[0], initial_load_counts[1])
+        for i in range(initial_cell_count):
+            cells, cells_grid = LoadCellDataset._add_random_cell(cells, cells_grid)
+        for i in range(initial_load_count):
+            loads, loads_grid = LoadCellDataset._add_random_load(loads, loads_grid)
+        
+        
+        ################################################################
+        # Generate input sequence
+        ################################################################
+        load_cells_seq_input = []
+        # Generate input cells
+        for i in range(input_seq_len):
+            load_cells = load.calculate_cell_load(cells, loads)
+            load_cells_seq_input.append(load_cells)
+            for cell_idx in range(MAX_CELL_COUNT):
+                mutate_roll = random.random()
+                # Only add cells if cell count is less than MAX_CELL_COUNT otherwise do nothing.
+                if mutate_roll < network_mutate_prob[0] and (len(cells) < MAX_CELL_COUNT - 1):
+                    cells, cells_grid = LoadCellDataset._add_random_cell(cells, cells_grid)
+                mutate_roll = random.random()
+                if mutate_roll < network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT + 1):
+                    cells, cells_grid = LoadCellDataset._remove_random_cell(cells, cells_grid)
+                
+        
+        ################################################################
+        # Generate target sequence
+        ################################################################
+        load_cells_seq_target = []
+        for i in range(target_seq_len):
+            load_cells = load.calculate_cell_load(cells, loads)
+            load_cells_seq_target.append(load_cells)
+            for cell_idx in range(MAX_CELL_COUNT):
+                mutate_roll = random.random()
+                if mutate_roll < network_mutate_prob[0] and (len(cells) < MAX_CELL_COUNT - 1):
+                    cells, cells_grid = LoadCellDataset._add_random_cell(cells, cells_grid,)
+                mutate_roll = random.random()
+                if mutate_roll < network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT + 1):
+                    cells, cells_grid = LoadCellDataset._remove_random_cell(cells, cells_grid)
+
+        return load_cells_seq_input, load_cells_seq_target
 
     @staticmethod
     def build_inputs_and_targets(input_seq_len, target_seq_len, ref_x, ref_y, load_cells_seq_input, load_cells_seq_target):
@@ -118,55 +172,16 @@ class LoadCellDataset(Dataset):
                 torch.tensor(neighbourhood_cell_present_target, dtype=torch.float32),)
         
     def __getitem__(self, idx):
-        cells, loads = [], []
-        cells_grid = np.zeros((IMAGE_SIZE, IMAGE_SIZE), dtype=np.int64)
-        loads_grid = np.zeros((IMAGE_SIZE, IMAGE_SIZE), dtype=np.int64)
-        initial_cell_count = random.randint(self.initial_cell_counts[0], self.initial_cell_counts[1])
-        initial_load_count = random.randint(self.initial_load_counts[0], self.initial_load_counts[1])
-        for i in range(initial_cell_count):
-            cells, cells_grid = self._add_random_cell(cells, cells_grid)
-        for i in range(initial_load_count):
-            loads, loads_grid = self._add_random_load(loads, loads_grid)
-        
-        
-        ################################################################
-        # Generate input sequence
-        ################################################################
-        load_cells_seq_input = []
-        # Generate input cells
-        for i in range(self.input_seq_len):
-            load_cells = load.calculate_cell_load(cells, loads)
-            load_cells_seq_input.append(load_cells)
-            for cell_idx in range(MAX_CELL_COUNT):
-                mutate_roll = random.random()
-                # Only add cells if cell count is less than MAX_CELL_COUNT otherwise do nothing.
-                if mutate_roll < self.network_mutate_prob[0] and mutate_roll < self.network_mutate_prob[1] and (len(cells) < MAX_CELL_COUNT):
-                    cells, cells_grid = self._add_random_cell(cells, cells_grid)
-                if mutate_roll < self.network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT):
-                    cells, cells_grid = self._remove_random_cell(cells, cells_grid)
-                
+                                          
+        load_cells_seq_input, load_cells_seq_target = self.generate_inputs_and_targets(self.input_seq_len, self.target_seq_len, self.initial_load_counts, self.initial_cell_counts, self.network_mutate_prob)
+
         ################################################################
         # Get a random reference cell present in the last element of the input sequence.
         # The last element is chosen to allow for examples where neighbourhood exists before reference cell.
         ################################################################
-
         reference_cell = load_cells_seq_input[-1][random.randrange(len(load_cells_seq_input[-1]))]
         ref_x, ref_y = reference_cell[0], reference_cell[1]
-        
-        ################################################################
-        # Generate target sequence
-        ################################################################
-        load_cells_seq_target = []
-        for i in range(self.target_seq_len):
-            load_cells = load.calculate_cell_load(cells, loads)
-            load_cells_seq_target.append(load_cells)
-            for cell_idx in range(MAX_CELL_COUNT):
-                mutate_roll = random.random()
-                if mutate_roll < self.network_mutate_prob[0] and mutate_roll < self.network_mutate_prob[1]  and (len(cells) < MAX_CELL_COUNT):
-                    cells, cells_grid = self._add_random_cell(cells, cells_grid,)
-                elif mutate_roll < self.network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT):
-                    cells, cells_grid = self._remove_random_cell(cells, cells_grid, reference_cell, remove_reference_cell=False)
-                                          
+
         # Now we know the reference cell.  Build the inputs
         (reference_cell_input,
         reference_cell_present_input,
