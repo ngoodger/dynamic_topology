@@ -5,7 +5,7 @@ import random
 import load
 
 IMAGE_SIZE = 32
-MAX_CELL_COUNT = 16
+MAX_CELL_COUNT = 8
 MIN_CELL_COUNT = 2
 OVERRIDE_TEST = True
 
