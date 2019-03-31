@@ -105,7 +105,7 @@ class LoadCellDataset(Dataset):
                 if mutate_roll < network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT + 1):
                     cells, cells_grid = LoadCellDataset._remove_random_cell(cells, cells_grid)
 
-        return load_cells_seq_input, load_cells_seq_target
+        return load_cells_seq_input, load_cells_seq_target, loads
 
     @staticmethod
     def build_inputs_and_targets(input_seq_len, target_seq_len, ref_x, ref_y, load_cells_seq_input, load_cells_seq_target):
@@ -173,7 +173,7 @@ class LoadCellDataset(Dataset):
         
     def __getitem__(self, idx):
                                           
-        load_cells_seq_input, load_cells_seq_target = self.generate_inputs_and_targets(self.input_seq_len, self.target_seq_len, self.initial_load_counts, self.initial_cell_counts, self.network_mutate_prob)
+        load_cells_seq_input, load_cells_seq_target, _ = self.generate_inputs_and_targets(self.input_seq_len, self.target_seq_len, self.initial_load_counts, self.initial_cell_counts, self.network_mutate_prob)
 
         ################################################################
         # Get a random reference cell present in the last element of the input sequence.

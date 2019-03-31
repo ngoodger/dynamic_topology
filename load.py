@@ -1,6 +1,8 @@
 import numpy as np
 from load_topology_dataset import IMAGE_SIZE
 
+SQUARE_MAX = np.sqrt(2) 
+
 def calculate_cell_load(cells, loads):
     if len(cells) == 0:
         return [] 
@@ -20,6 +22,7 @@ def calculate_cell_load(cells, loads):
             load_cell = square_dist(euclidean_dist)
 
             load_cells_np = load_cells_np + load_cell
+            #print(load_cells_np)
         load_cells = []
         # Sum of loads should always equal number of loads
         #print(load_cells_np.sum())
@@ -36,5 +39,5 @@ def linear_dist(x):
     return (load / load.sum())   
 
 def square_dist(x):
-    load = 2. - np.square(x)
+    load = SQUARE_MAX - np.power(x, 2)
     return (load / load.sum())
