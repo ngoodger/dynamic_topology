@@ -11,7 +11,7 @@ class EncoderRNN(nn.Module):
         self.device = device
         self.lstm_hidden_size = lstm_hidden_size
         self.lstm = nn.LSTM(
-            3, lstm_hidden_size, batch_first=True, num_layers=lstm_layers
+            34, lstm_hidden_size, batch_first=True, num_layers=lstm_layers
         )
         self.output_layer = nn.Linear(lstm_hidden_size, 1)
 
@@ -85,9 +85,10 @@ class DecoderRNN(nn.Module):
 
 
 class NeighbourhoodInputEmbedding(nn.Module):
-    def __init__(self, neighbourhood_hidden_size):
+    def __init__(self, neighbourhood_hidden_size, neighbourhood_output_size):
         super(NeighbourhoodInputEmbedding, self).__init__()
         self.neighbourhood_hidden_size = neighbourhood_hidden_size
+        self.neighbourhood_output_size = neighbourhood_output_size
         self.neighbourhood_rel_input_layer = nn.Sequential(
             nn.Linear(2, neighbourhood_hidden_size), nn.LeakyReLU()
         )
@@ -95,9 +96,9 @@ class NeighbourhoodInputEmbedding(nn.Module):
             nn.Linear(1, neighbourhood_hidden_size), nn.LeakyReLU()
         )
         self.neighbourhood_rel_hidden_layer = nn.Sequential(
-            nn.Linear(neighbourhood_hidden_size, 1), nn.Sigmoid()
+            nn.Linear(neighbourhood_hidden_size, 2 * neighbourhood_output_size), nn.LeakyReLU()
         )
-        self.neighbourhood_load_hidden_layer = nn.Linear(neighbourhood_hidden_size, 1)
+        self.neighbourhood_load_hidden_layer = nn.Linear(neighbourhood_hidden_size, neighbourhood_output_size)
 
     def forward(self, neighbourhood_rel_input, neighbourhood_load_input):
         assert(len(neighbourhood_rel_input.shape) == 2)
@@ -114,9 +115,9 @@ class NeighbourhoodInputEmbedding(nn.Module):
         neighbourhood_load_hidden_output = self.neighbourhood_load_hidden_layer(
             neighbourhood_load_hidden_val
         )
-        output = neighbourhood_rel_hidden_output * neighbourhood_load_hidden_output
-        # Learn residual. Subtraction since neighbourhood removes load from reference cell.
-        output -= neighbourhood_load_input
+        # Include both multiplicative gate and concatenate to make sure needed features can come through.
+        output = torch.cat((neighbourhood_rel_hidden_output[:, :self.neighbourhood_output_size]
+                              * neighbourhood_load_hidden_output, neighbourhood_rel_hidden_output[:, self.neighbourhood_output_size:]), dim=1)
         return output
 
 
@@ -158,7 +159,7 @@ class DynamicTopologyModel(nn.Module):
         self.neighbourhood_cell_count = neighbourhood_cell_count
         self.neighbourhood_output_size = neighbourhood_output_size
         self.neighbourhood_input_embedding = NeighbourhoodInputEmbedding(
-            neighbourhood_hidden_size
+            neighbourhood_hidden_size, neighbourhood_output_size
         )
         self.encoder = EncoderRNN(
             lstm_hidden_size=lstm_hidden_size, lstm_layers=lstm_layers, device=device

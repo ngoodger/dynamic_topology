@@ -5,8 +5,8 @@ import random
 import load
 
 IMAGE_SIZE = 32
-MAX_CELL_COUNT = 8
-MIN_CELL_COUNT = 2
+MAX_CELL_COUNT = 2
+MIN_CELL_COUNT = 1
 OVERRIDE_TEST = True
 
 class LoadCellDataset(Dataset):
@@ -71,7 +71,6 @@ class LoadCellDataset(Dataset):
         for i in range(initial_load_count):
             loads, loads_grid = LoadCellDataset._add_random_load(loads, loads_grid)
         
-        
         ################################################################
         # Generate input sequence
         ################################################################
@@ -83,10 +82,9 @@ class LoadCellDataset(Dataset):
             for cell_idx in range(MAX_CELL_COUNT):
                 mutate_roll = random.random()
                 # Only add cells if cell count is less than MAX_CELL_COUNT otherwise do nothing.
-                if mutate_roll < network_mutate_prob[0] and (len(cells) < MAX_CELL_COUNT - 1):
+                if mutate_roll < network_mutate_prob[0] and (len(cells) < MAX_CELL_COUNT):
                     cells, cells_grid = LoadCellDataset._add_random_cell(cells, cells_grid)
-                mutate_roll = random.random()
-                if mutate_roll < network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT + 1):
+                elif mutate_roll  < network_mutate_prob[1] and (len(cells) > MIN_CELL_COUNT):
                     cells, cells_grid = LoadCellDataset._remove_random_cell(cells, cells_grid)
                 
         
@@ -99,10 +97,9 @@ class LoadCellDataset(Dataset):
             load_cells_seq_target.append(load_cells)
             for cell_idx in range(MAX_CELL_COUNT):
                 mutate_roll = random.random()
-                if mutate_roll < network_mutate_prob[0] and (len(cells) < MAX_CELL_COUNT - 1):
+                if mutate_roll < network_mutate_prob[0] and (len(cells) < MAX_CELL_COUNT):
                     cells, cells_grid = LoadCellDataset._add_random_cell(cells, cells_grid,)
-                mutate_roll = random.random()
-                if mutate_roll < network_mutate_prob[1] and (len(cells) >= MIN_CELL_COUNT + 1):
+                elif mutate_roll < network_mutate_prob[1] and (len(cells) > MIN_CELL_COUNT):
                     cells, cells_grid = LoadCellDataset._remove_random_cell(cells, cells_grid)
 
         return load_cells_seq_input, load_cells_seq_target, loads
@@ -192,6 +189,8 @@ class LoadCellDataset(Dataset):
         reference_cell_present_target,
         neighbourhood_cell_rel_target,
         neighbourhood_cell_present_target,) = self.build_inputs_and_targets(self.input_seq_len, self.target_seq_len, ref_x, ref_y, load_cells_seq_input, load_cells_seq_target)
+
+        assert((reference_cell_target <= 1.0).min().item() == 1)
 
         return (reference_cell_input,
                 reference_cell_present_input,
